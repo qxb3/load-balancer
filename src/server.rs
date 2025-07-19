@@ -39,18 +39,19 @@ async fn handle_request(mut stream: TcpStream, load: Arc<Mutex<i32>>) {
         let mut buf = [0; 1024];
         match stream.read(&mut buf).await {
             Ok(0) => break,
-            Ok(n) => {
-                request.extend_from_slice(&buf[..n]);
-                if buf[..n].ends_with(b"\0") {
-                    request.pop(); // Removes the null terminator.
-                    break;
-                }
+            Ok(bytes) => {
+                let ends_with_null = buf[..bytes].ends_with(b"\0");
+                request.extend_from_slice(&buf[..bytes - ends_with_null as usize]);
+                if ends_with_null { break; }
             }
             Err(_) => break,
         }
     }
 
-    let target_number = String::from_utf8(request).unwrap().parse::<u64>().unwrap();
+    let target_number = String::from_utf8(request)
+        .unwrap()
+        .parse::<u64>()
+        .unwrap();
 
     let result = fib(target_number);
 

@@ -21,7 +21,7 @@ async fn main() {
             let address = format!("{host}:{port}");
 
             start_server(address).await;
-        }
+        },
         _ => panic!("Unknown command"),
     }
 }

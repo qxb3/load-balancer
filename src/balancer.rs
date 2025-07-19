@@ -37,29 +37,29 @@ pub async fn start_load_balancer(address: String) {
 }
 
 async fn balance(client_stream: TcpStream, data: LBData) {
-    let least_load_address = get_least_load_address(Arc::clone(&data)).await;
-    let backend_stream = TcpStream::connect(&least_load_address).await.unwrap();
+    let least_load_server = get_least_load_address(Arc::clone(&data)).await;
+    let server_stream = TcpStream::connect(&least_load_server).await.unwrap();
 
     let (mut csr, mut csw) = client_stream.into_split();
-    let (mut bsr, mut bsw) = backend_stream.into_split();
+    let (mut ssr, mut ssw) = server_stream.into_split();
 
-    // client -> backend.
+    // client -> server.
     let cb_handle = tokio::spawn(async move {
         loop {
             let mut request = [0; 1024];
             match csr.read(&mut request).await {
                 Ok(0) => break,
-                Ok(n) => bsw.write_all(&request[..n]).await.unwrap(),
+                Ok(n) => ssw.write_all(&request[..n]).await.unwrap(),
                 Err(_) => break,
             }
         }
     });
 
-    // backend -> client.
+    // server -> client.
     let bc_handle = tokio::spawn(async move {
         loop {
             let mut response = [0; 1024];
-            match bsr.read(&mut response).await {
+            match ssr.read(&mut response).await {
                 Ok(0) => break,
                 Ok(n) => csw.write_all(&response[..n]).await.unwrap(),
                 Err(_) => break,
@@ -70,12 +70,14 @@ async fn balance(client_stream: TcpStream, data: LBData) {
     let _ = tokio::join!(cb_handle, bc_handle);
 
     let mut data_ref = data.lock().await;
-    let load = data_ref.get_mut(&least_load_address).unwrap();
+    let load = data_ref.get_mut(&least_load_server).unwrap();
+
     *load -= 1;
 }
 
 async fn get_least_load_address(data: LBData) -> String {
     let mut data_ref = data.lock().await;
+
     let (address, load) = data_ref
         .iter_mut()
         .min_by_key(|(_, v)| **v)
